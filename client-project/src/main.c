@@ -17,59 +17,89 @@
 
 void clearwinsock() {
 #if defined WIN32
-    WSACleanup();
+	WSACleanup();
 #endif
+}
+
+void errorhandler(char *errorMessage) {
+	printf("%s", errorMessage);
 }
 
 int main(int argc, char *argv[]) {
 #if defined WIN32
-    WSADATA wsa_data;
-    if (WSAStartup(MAKEWORD(2,2), &wsa_data) != 0) return -1;
+	// Initialize Winsock
+	WSADATA wsa_data;
+	int result = WSAStartup(MAKEWORD(2,2), &wsa_data);
+	if (result != 0) {
+		printf("Error at WSAStartup()\n");
+		return 0;
+	}
 #endif
 
-    int my_socket = socket(AF_INET, SOCK_STREAM, 0);
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(SERVER_PORT);
-    server_addr.sin_addr.s_addr = inet_addr(SERVER_ADDRESS);
+	// Create client socket
+	int c_socket;
+	c_socket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (c_socket < 0) {
+		errorhandler("Socket creation failed.\n");
+		clearwinsock();
+		return -1;
+	}
 
-    // Point 1: Automatic connection
-    if (connect(my_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        printf("Connection failed.\n");
-        clearwinsock();
-        return -1;
-    }
+	// Set connection settings
+	struct sockaddr_in sad;
+	memset(&sad, 0, sizeof(sad));
+	sad.sin_family = AF_INET;
+	sad.sin_addr.s_addr = inet_addr(SERVER_ADDRESS); // IP defined in protocol.h
+	sad.sin_port = htons(PROTO_PORT);              // Port defined in protocol.h
 
-    char input[BUFFER_SIZE];
-    char password[BUFFER_SIZE];
+	// Establish connection automatically (Point 1)
+	if (connect(c_socket, (struct sockaddr*) &sad, sizeof(sad)) < 0) {
+		errorhandler("Failed to connect.\n");
+		closesocket(c_socket);
+		clearwinsock();
+		return -1;
+	}
 
-    while (1) {
-        // Point 3 & 6: Single read from standard input (e.g., "n 8")
-        printf("Enter request (n/a/m/s length) or 'q' to quit: ");
-        if (fgets(input, BUFFER_SIZE, stdin) == NULL) break;
-        input[strcspn(input, "\n")] = 0;
+	char input_buffer[BUFFER_SIZE];
+	char response_buffer[BUFFER_SIZE];
 
-        // Point 7: Quit condition
-        if (strcmp(input, "q") == 0) {
-            send(my_socket, "q", 1, 0);
-            break;
-        }
+	// Communication loop
+	while (1) {
+		// Get request from user (Point 3 & 6)
+		printf("Enter request (type length, e.g., 'n 8') or 'q' to quit: ");
+		
+		// Use fgets to read the whole line in a single read (Requirement)
+		if (fgets(input_buffer, BUFFER_SIZE, stdin) == NULL) break;
+		
+		// Remove newline character
+		input_buffer[strcspn(input_buffer, "\n")] = 0;
 
-        // Point 4: Send request
-        send(my_socket, input, strlen(input), 0);
+		// Check for quit command (Point 7)
+		if (strcmp(input_buffer, "q") == 0) {
+			send(c_socket, "q", 1, 0);
+			break;
+		}
 
-        // Point 5: Read and display password
-        memset(password, 0, BUFFER_SIZE);
-        if (recv(my_socket, password, BUFFER_SIZE - 1, 0) > 0) {
-            printf("Password: %s\n", password);
-        } else {
-            break;
-        }
-    }
+		// Send request to server (Point 4)
+		if (send(c_socket, input_buffer, strlen(input_buffer), 0) <= 0) {
+			errorhandler("send() failed.\n");
+			break;
+		}
 
-    closesocket(my_socket);
-    printf("Client terminated.\n"); // Point 7 requirement
-    clearwinsock();
-    return 0;
-}
+		// Receive generated password from server (Point 5)
+		memset(response_buffer, '\0', BUFFER_SIZE);
+		if (recv(c_socket, response_buffer, BUFFER_SIZE - 1, 0) <= 0) {
+			errorhandler("recv() failed or connection closed.\n");
+			break;
+		}
+
+		// Display the password on standard output
+		printf("Generated password: %s\n", response_buffer);
+	}
+
+	// Close and cleanup
+	closesocket(c_socket);
+	printf("Client terminated.\n");
+	clearwinsock();
+	return 0;
+} // main end.
