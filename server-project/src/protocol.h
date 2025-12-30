@@ -1,38 +1,27 @@
 /*
  * protocol.h
- *
- * Server header file
- * Definitions, constants and function prototypes for the server
+ * Application protocol shared between client and server.
  */
 
 #ifndef PROTOCOL_H_
 #define PROTOCOL_H_
 
-#define SERVER_PORT 56700
-#define DEFAULT_IP "127.0.0.1"
+// Default connection parameters (Point 1 & Requirements)
+#define SERVER_PORT 27015
+#define SERVER_ADDRESS "127.0.0.1"
+
+// Buffer and Queue settings (Point 8)
 #define BUFFER_SIZE 512
-#define QUEUE_SIZE 5
+#define QLEN 5
 
-typedef struct {
-    char type;        // 't', 'h', 'w', 'p'
-    char city[64];    // Nome città
-} weather_request_t;
+// Password length constraints (Requirements)
+#define MIN_PASS_LEN 6
+#define MAX_PASS_LEN 32
 
-typedef struct {
-    unsigned int status;
-    char type;
-    float value;
-} weather_response_t;
-
-
-void valida(weather_request_t *req, weather_response_t *resp);
-void errorhandler(char *errorMessage);
-void clearwinsock();
-float random_float(float min, float max);
-
-float get_temperature(void);
-float get_humidity(void);
-float get_wind(void);
-float get_pressure(void);
+// Required generation functions (Requirements)
+void generate_numeric(int len, char* out);
+void generate_alpha(int len, char* out);
+void generate_mixed(int len, char* out);
+void generate_secure(int len, char* out);
 
 #endif /* PROTOCOL_H_ */

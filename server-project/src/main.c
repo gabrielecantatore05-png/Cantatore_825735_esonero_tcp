@@ -1,17 +1,5 @@
-/*
- * main.c
- *
- * TCP Server - Template for Computer Networks assignment
- *
- * This file contains the boilerplate code for a TCP server
- * portable across Windows, Linux and macOS.
- */
-
 #if defined WIN32
 #include <winsock.h>
-
-typedef int socklen_t;
-#define strcasecmp _stricmp
 #else
 #include <string.h>
 #include <unistd.h>
@@ -20,7 +8,6 @@ typedef int socklen_t;
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#include <strings.h>
 #define closesocket close
 #endif
 
@@ -29,148 +16,120 @@ typedef int socklen_t;
 #include <time.h>
 #include "protocol.h"
 
-
-#ifndef NO_ERROR
 #define NO_ERROR 0
-#endif
 
-static const char *SUPPORTED_CITIES[] = {
-	"Bari", "Roma", "Milano", "Napoli", "Torino",
-	"Palermo", "Genova", "Bologna", "Firenze", "Venezia"
-};
+// Implementation of required generation functions
+void generate_numeric(int len, char* out) {
+    const char charset[] = "0123456789";
+    for (int i = 0; i < len; i++) out[i] = charset[rand() % 10];
+    out[len] = '\0';
+}
 
-void errorhandler(char *errorMessage) {
-    printf("%s\n", errorMessage);
+void generate_alpha(int len, char* out) {
+    const char charset[] = "abcdefghijklmnopqrstuvwxyz";
+    for (int i = 0; i < len; i++) out[i] = charset[rand() % 26];
+    out[len] = '\0';
+}
+
+void generate_mixed(int len, char* out) {
+    const char charset[] = "abcdefghijklmnopqrstuvwxyz0123456789";
+    for (int i = 0; i < len; i++) out[i] = charset[rand() % 36];
+    out[len] = '\0';
+}
+
+void generate_secure(int len, char* out) {
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()";
+    int size = strlen(charset);
+    for (int i = 0; i < len; i++) out[i] = charset[rand() % size];
+    out[len] = '\0';
 }
 
 void clearwinsock() {
 #if defined WIN32
-	WSACleanup();
+    WSACleanup();
 #endif
 }
 
-float random_float(float min, float max) {
-	float scale = rand() / (float) RAND_MAX;
-	return min + scale * (max - min);
-}
-
-
-void valida(weather_request_t *req, weather_response_t *resp) {
-
-	if(req->type != 't' && req->type != 'h' && req->type != 'w' && req->type != 'p') {
-		resp->status = 2;
-		return;
-	}
-
-
-	int flag = 1;
-	for (int i = 0; i < 10; i++) {
-		if(strcasecmp(req->city, SUPPORTED_CITIES[i]) == 0) {
-			flag = 0;
-			break;
-		}
-	}
-
-	if(flag == 1) {
-		resp->status = 1;
-	} else {
-		resp->status = 0;
-	}
-}
-
-float get_temperature(void) { return random_float(-10.0, 40.0); }
-float get_humidity(void)    { return random_float(20.0, 100.0); }
-float get_wind(void)        { return random_float(0.0, 100.0); }
-float get_pressure(void)    { return random_float(950.0, 1050.0); }
-
 int main(int argc, char *argv[]) {
-	#if defined WIN32
-		WSADATA wsa_data;
-		if (WSAStartup(MAKEWORD(2,2), &wsa_data) != 0) {
-			printf("Error at WSAStartup()\n");
-			return 0;
-		}
-	#endif
+    srand((unsigned int)time(NULL));
 
-	int port = SERVER_PORT;
-	if (argc > 2 && strcmp(argv[1], "-p") == 0) {
-		port = atoi(argv[2]);
-	}
+#if defined WIN32
+    WSADATA wsa_data;
+    if (WSAStartup(MAKEWORD(2,2), &wsa_data) != NO_ERROR) {
+        printf("Error at WSAStartup()\n");
+        return -1;
+    }
+#endif
 
-	int my_socket = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (my_socket < 0) {
-		errorhandler("socket creation failed.\n");
-		clearwinsock();
-		return -1;
-	}
+    int my_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (my_socket < 0) {
+        printf("Socket creation failed.\n");
+        clearwinsock();
+        return -1;
+    }
 
-	struct sockaddr_in sad;
-	memset(&sad, 0, sizeof(sad));
-	sad.sin_family = AF_INET;
-	sad.sin_addr.s_addr = htonl(INADDR_ANY);
-	sad.sin_port = htons(port);
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(SERVER_PORT);
+    server_addr.sin_addr.s_addr = inet_addr(SERVER_ADDRESS);
 
-	if (bind(my_socket, (struct sockaddr*) &sad, sizeof(sad)) < 0) {
-		errorhandler("bind() failed.\n");
-		closesocket(my_socket);
-		clearwinsock();
-		return -1;
-	}
+    if (bind(my_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        printf("Bind failed.\n");
+        closesocket(my_socket);
+        clearwinsock();
+        return -1;
+    }
 
-	if (listen(my_socket, QUEUE_SIZE) < 0) {
-		errorhandler("listen() failed.\n");
-		closesocket(my_socket);
-		clearwinsock();
-		return -1;
-	}
+    if (listen(my_socket, QLEN) < 0) {
+        printf("Listen failed.\n");
+        closesocket(my_socket);
+        clearwinsock();
+        return -1;
+    }
 
-	struct sockaddr_in cad;
-	int client_socket;
-	int client_len;
+    printf("Server listening on %s:%d\n", SERVER_ADDRESS, SERVER_PORT);
 
-	srand(time(NULL));
-	printf("Server in ascolto sulla porta %d...\n", port);
+    while (1) {
+        struct sockaddr_in client_addr;
+        int client_len = sizeof(client_addr);
+        int client_socket = accept(my_socket, (struct sockaddr*)&client_addr, &client_len);
 
-	while (1) {
-		client_len = sizeof(cad);
+        if (client_socket >= 0) {
+            // Point 2: Specific output format
+            printf("New connection from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
 
-		if ((client_socket = accept(my_socket, (struct sockaddr*) &cad, (socklen_t*)&client_len)) < 0) {
-			errorhandler("accept() failed.\n");
-			continue;
-		}
+            char buffer[BUFFER_SIZE];
+            while (1) {
+                memset(buffer, 0, BUFFER_SIZE);
+                int bytes = recv(client_socket, buffer, BUFFER_SIZE - 1, 0);
+                
+                // Point 7: Handle disconnection or 'q'
+                if (bytes <= 0 || buffer[0] == 'q') break;
 
-		weather_request_t request;
-		if (recv(client_socket, (char*)&request, sizeof(request), 0) <= 0) {
-			closesocket(client_socket);
-			continue;
-		}
+                char type;
+                int length;
+                char password[MAX_PASS_LEN + 1];
 
-		printf("Richiesta '%c %s' dal client ip %s\n", request.type, request.city, inet_ntoa(cad.sin_addr));
-
-		weather_response_t response;
-		valida(&request, &response);
-
-		if(response.status == 0) {
-			switch (request.type) {
-				case 't': response.value = get_temperature(); break;
-				case 'h': response.value = get_humidity(); break;
-				case 'w': response.value = get_wind(); break;
-				case 'p': response.value = get_pressure(); break;
-			}
-			response.type = request.type;
-		} else {
-			response.type = '\0';
-			response.value = 0.0;
-		}
-
-		if (send(client_socket, (char*)&response, sizeof(response), 0) != sizeof(response)) {
-			errorhandler("send() failed");
-		}
-
-		closesocket(client_socket);
-	}
-
-	closesocket(my_socket);
-	clearwinsock();
-	return 0;
+                // Point 4: Parse request and generate
+                if (sscanf(buffer, "%c %d", &type, &length) == 2) {
+                    if (length >= MIN_PASS_LEN && length <= MAX_PASS_LEN) {
+                        switch (type) {
+                            case 'n': generate_numeric(length, password); break;
+                            case 'a': generate_alpha(length, password); break;
+                            case 'm': generate_mixed(length, password); break;
+                            case 's': generate_secure(length, password); break;
+                            default: strcpy(password, "Invalid type"); break;
+                        }
+                        send(client_socket, password, strlen(password), 0);
+                    } else {
+                        char* err = "Length must be between 6 and 32";
+                        send(client_socket, err, strlen(err), 0);
+                    }
+                }
+            }
+            closesocket(client_socket);
+        }
+    }
+    return 0;
 }
